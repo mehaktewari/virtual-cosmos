@@ -1,7 +1,5 @@
-import { io, Socket } from "socket.io-client";
+import { io } from "socket.io-client";
 
-const SOCKET_URL = "http://localhost:5000";
-
-export const socket: Socket = io(SOCKET_URL, {
+export const socket = io("https://virtual-cosmos-l0ax.onrender.com", {
   autoConnect: false,
 });
