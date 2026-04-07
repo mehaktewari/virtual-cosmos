@@ -16,7 +16,7 @@ export default function GameCanvas({ username }: Props) {
   useEffect(() => {
     const app = new PIXI.Application({
       resizeTo: window,
-      backgroundColor: 0x0f172a,
+      backgroundColor: 0x020617,
       antialias: true,
     });
 
@@ -26,10 +26,25 @@ export default function GameCanvas({ username }: Props) {
     }
 
     /**
-     * 🌍 WORLD CONTAINER (for camera)
+     * 🌍 WORLD (camera container)
      */
     const world = new PIXI.Container();
     app.stage.addChild(world);
+
+    /**
+     * ✨ STARS BACKGROUND
+     */
+    const stars = new PIXI.Graphics();
+    for (let i = 0; i < 200; i++) {
+      stars.beginFill(0xffffff, Math.random());
+      stars.drawCircle(
+        Math.random() * 4000 - 2000,
+        Math.random() * 4000 - 2000,
+        Math.random() * 2
+      );
+      stars.endFill();
+    }
+    world.addChild(stars);
 
     /**
      * 🟦 GRID
@@ -39,7 +54,7 @@ export default function GameCanvas({ username }: Props) {
 
     const drawGrid = () => {
       grid.clear();
-      grid.lineStyle(1, 0x1e293b, 0.5);
+      grid.lineStyle(1, 0x1e293b, 0.4);
 
       for (let x = -2000; x < 2000; x += gridSize) {
         grid.moveTo(x, -2000);
@@ -58,7 +73,6 @@ export default function GameCanvas({ username }: Props) {
     /**
      * 🧍 PLAYERS
      */
-    const playersMap: Record<string, any> = {};
     const playerGraphics: Record<string, PIXI.Graphics> = {};
     const labels: Record<string, PIXI.Text> = {};
     const bubbles: Record<string, PIXI.Text> = {};
@@ -69,6 +83,9 @@ export default function GameCanvas({ username }: Props) {
     const speed = 3;
     const PROXIMITY_RADIUS = 120;
 
+    /**
+     * 🔵 PROXIMITY CIRCLE
+     */
     const proximityCircle = new PIXI.Graphics();
     world.addChild(proximityCircle);
 
@@ -77,17 +94,21 @@ export default function GameCanvas({ username }: Props) {
      */
     const keys: Record<string, boolean> = {};
 
-    window.addEventListener("keydown", (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = true;
-    });
+    };
 
-    window.addEventListener("keyup", (e) => {
+    const handleKeyUp = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = false;
-    });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
 
     /**
      * 📡 JOIN
      */
+    socket.connect();
     socket.emit("join", { username });
 
     /**
@@ -125,7 +146,7 @@ export default function GameCanvas({ username }: Props) {
         }
       });
 
-      // remove disconnected
+      // Remove disconnected players
       Object.keys(playerGraphics).forEach((id) => {
         if (!players[id]) {
           world.removeChild(playerGraphics[id]);
@@ -184,7 +205,9 @@ export default function GameCanvas({ username }: Props) {
         moved = true;
       }
 
-      if (moved) socket.emit("move", player);
+      if (moved) {
+        socket.emit("move", player);
+      }
 
       let nearby = false;
 
@@ -194,7 +217,7 @@ export default function GameCanvas({ username }: Props) {
 
         if (!g) return;
 
-        // 🎯 SMOOTH INTERPOLATION
+        // Smooth interpolation
         g.x += (p.x - g.x) * 0.2;
         g.y += (p.y - g.y) * 0.2;
 
@@ -205,32 +228,37 @@ export default function GameCanvas({ username }: Props) {
         bubbles[id].y = g.y - 45;
 
         if (id === socket.id) {
-          g.tint = 0x22c55e;
+          g.tint = 0x22c55e; // 🟢 YOU
         } else {
           const d = dist(player.x, player.y, p.x, p.y);
 
           if (d < PROXIMITY_RADIUS) {
-            g.tint = 0xfacc15;
+            g.tint = 0xfacc15; // 🟡 NEAR
             nearby = true;
           } else {
-            g.tint = 0x38bdf8;
+            g.tint = 0x38bdf8; // 🔵 FAR
           }
         }
       });
 
       setChatActive(nearby);
 
-      // 🎥 CAMERA FOLLOW
+      // Camera follow
       world.x = window.innerWidth / 2 - player.x;
       world.y = window.innerHeight / 2 - player.y;
 
-      // 🔵 PROXIMITY CIRCLE
+      // Proximity circle
       proximityCircle.clear();
       proximityCircle.lineStyle(2, 0x22c55e, 0.6);
       proximityCircle.drawCircle(player.x, player.y, PROXIMITY_RADIUS);
     });
 
+    /**
+     * 🧹 CLEANUP
+     */
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
       socket.off("players");
       socket.off("chat");
       app.destroy(true, true);
