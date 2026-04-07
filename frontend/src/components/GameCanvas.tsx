@@ -26,6 +26,12 @@ export default function GameCanvas({ username }: Props) {
     }
 
     /**
+     * 🌍 WORLD CONTAINER (for camera)
+     */
+    const world = new PIXI.Container();
+    app.stage.addChild(world);
+
+    /**
      * 🟦 GRID
      */
     const grid = new PIXI.Graphics();
@@ -35,66 +41,59 @@ export default function GameCanvas({ username }: Props) {
       grid.clear();
       grid.lineStyle(1, 0x1e293b, 0.5);
 
-      const width = app.renderer.width;
-      const height = app.renderer.height;
-
-      for (let x = 0; x < width; x += gridSize) {
-        grid.moveTo(x, 0);
-        grid.lineTo(x, height);
+      for (let x = -2000; x < 2000; x += gridSize) {
+        grid.moveTo(x, -2000);
+        grid.lineTo(x, 2000);
       }
 
-      for (let y = 0; y < height; y += gridSize) {
-        grid.moveTo(0, y);
-        grid.lineTo(width, y);
+      for (let y = -2000; y < 2000; y += gridSize) {
+        grid.moveTo(-2000, y);
+        grid.lineTo(2000, y);
       }
     };
 
     drawGrid();
-    app.stage.addChild(grid);
+    world.addChild(grid);
 
     /**
      * 🧍 PLAYERS
      */
+    const playersMap: Record<string, any> = {};
     const playerGraphics: Record<string, PIXI.Graphics> = {};
-    const playerLabels: Record<string, PIXI.Text> = {};
+    const labels: Record<string, PIXI.Text> = {};
+    const bubbles: Record<string, PIXI.Text> = {};
+
     let allPlayers: Record<string, any> = {};
 
-    /**
-     * 🧠 LOCAL PLAYER
-     */
-    const player = { x: 400, y: 300 };
+    const player = { x: 0, y: 0 };
     const speed = 3;
-
     const PROXIMITY_RADIUS = 120;
 
-    /**
-     * 🔵 PROXIMITY CIRCLE
-     */
     const proximityCircle = new PIXI.Graphics();
-    app.stage.addChild(proximityCircle);
+    world.addChild(proximityCircle);
 
     /**
      * 🎮 INPUT
      */
     const keys: Record<string, boolean> = {};
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+    window.addEventListener("keydown", (e) => {
       keys[e.key.toLowerCase()] = true;
-    };
+    });
 
-    const handleKeyUp = (e: KeyboardEvent) => {
+    window.addEventListener("keyup", (e) => {
       keys[e.key.toLowerCase()] = false;
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
+    });
 
     /**
-     * 📡 RECEIVE PLAYERS
+     * 📡 JOIN
      */
     socket.emit("join", { username });
 
-    socket.on("players", (players: any) => {
+    /**
+     * 📡 PLAYERS UPDATE
+     */
+    socket.on("players", (players) => {
       allPlayers = players;
 
       Object.keys(players).forEach((id) => {
@@ -104,33 +103,38 @@ export default function GameCanvas({ username }: Props) {
           g.drawCircle(0, 0, 15);
           g.endFill();
 
-          const label = new PIXI.Text(players[id].username || "User", {
+          const label = new PIXI.Text(players[id].username, {
             fontSize: 12,
             fill: 0xffffff,
           });
           label.anchor.set(0.5);
 
-          app.stage.addChild(g);
-          app.stage.addChild(label);
+          const bubble = new PIXI.Text("", {
+            fontSize: 10,
+            fill: 0xffffff,
+          });
+          bubble.anchor.set(0.5);
+
+          world.addChild(g);
+          world.addChild(label);
+          world.addChild(bubble);
 
           playerGraphics[id] = g;
-          playerLabels[id] = label;
+          labels[id] = label;
+          bubbles[id] = bubble;
         }
-
-        playerGraphics[id].x = players[id].x;
-        playerGraphics[id].y = players[id].y;
-
-        playerLabels[id].x = players[id].x;
-        playerLabels[id].y = players[id].y - 25;
       });
 
-      // Remove disconnected
+      // remove disconnected
       Object.keys(playerGraphics).forEach((id) => {
         if (!players[id]) {
-          app.stage.removeChild(playerGraphics[id]);
-          app.stage.removeChild(playerLabels[id]);
+          world.removeChild(playerGraphics[id]);
+          world.removeChild(labels[id]);
+          world.removeChild(bubbles[id]);
+
           delete playerGraphics[id];
-          delete playerLabels[id];
+          delete labels[id];
+          delete bubbles[id];
         }
       });
     });
@@ -140,14 +144,22 @@ export default function GameCanvas({ username }: Props) {
      */
     socket.on("chat", (msg) => {
       setMessages((prev) => [...prev, msg]);
+
+      const bubble = bubbles[msg.id];
+      if (bubble) {
+        bubble.text = msg.text;
+
+        setTimeout(() => {
+          bubble.text = "";
+        }, 3000);
+      }
     });
 
     /**
      * 📏 DISTANCE
      */
-    const getDistance = (x1: number, y1: number, x2: number, y2: number) => {
-      return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-    };
+    const dist = (x1: number, y1: number, x2: number, y2: number) =>
+      Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 
     /**
      * ⚡ GAME LOOP
@@ -177,29 +189,42 @@ export default function GameCanvas({ username }: Props) {
       let nearby = false;
 
       Object.keys(allPlayers).forEach((id) => {
-        const other = allPlayers[id];
-        const graphic = playerGraphics[id];
+        const p = allPlayers[id];
+        const g = playerGraphics[id];
 
-        if (!graphic) return;
+        if (!g) return;
+
+        // 🎯 SMOOTH INTERPOLATION
+        g.x += (p.x - g.x) * 0.2;
+        g.y += (p.y - g.y) * 0.2;
+
+        labels[id].x = g.x;
+        labels[id].y = g.y - 25;
+
+        bubbles[id].x = g.x;
+        bubbles[id].y = g.y - 45;
 
         if (id === socket.id) {
-          graphic.tint = 0x22c55e; // GREEN
-          return;
-        }
-
-        const dist = getDistance(player.x, player.y, other.x, other.y);
-
-        if (dist < PROXIMITY_RADIUS) {
-          graphic.tint = 0xfacc15; // YELLOW
-          nearby = true;
+          g.tint = 0x22c55e;
         } else {
-          graphic.tint = 0x38bdf8; // BLUE
+          const d = dist(player.x, player.y, p.x, p.y);
+
+          if (d < PROXIMITY_RADIUS) {
+            g.tint = 0xfacc15;
+            nearby = true;
+          } else {
+            g.tint = 0x38bdf8;
+          }
         }
       });
 
       setChatActive(nearby);
 
-      // Draw circle
+      // 🎥 CAMERA FOLLOW
+      world.x = window.innerWidth / 2 - player.x;
+      world.y = window.innerHeight / 2 - player.y;
+
+      // 🔵 PROXIMITY CIRCLE
       proximityCircle.clear();
       proximityCircle.lineStyle(2, 0x22c55e, 0.6);
       proximityCircle.drawCircle(player.x, player.y, PROXIMITY_RADIUS);

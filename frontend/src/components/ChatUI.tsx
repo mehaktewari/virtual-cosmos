@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface Props {
   visible: boolean;
@@ -8,6 +8,11 @@ interface Props {
 
 export default function ChatUI({ visible, messages, onSend }: Props) {
   const [input, setInput] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   if (!visible) return null;
 
@@ -18,28 +23,30 @@ export default function ChatUI({ visible, messages, onSend }: Props) {
   };
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[320px] bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl p-3 text-white shadow-xl">
-      <div className="h-40 overflow-y-auto text-sm space-y-1 mb-2">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[360px] bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-4 text-white shadow-2xl">
+      <div className="h-44 overflow-y-auto text-sm space-y-2 mb-3">
         {messages.map((msg, i) => (
-          <div key={i}>
+          <div key={i} className="bg-white/10 px-2 py-1 rounded-md">
             <span className="text-green-300 font-semibold">
-              {msg.id.slice(0, 4)}:
+              {msg.username}:
             </span>{" "}
             {msg.text}
           </div>
         ))}
+        <div ref={endRef} />
       </div>
 
       <div className="flex gap-2">
         <input
-          className="flex-1 px-2 py-1 rounded bg-black/30 outline-none"
+          className="flex-1 px-3 py-2 rounded-lg bg-black/30 outline-none"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Say something..."
+          placeholder="Type message..."
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
         <button
           onClick={handleSend}
-          className="bg-green-500 px-3 rounded text-black font-semibold"
+          className="bg-green-500 px-4 rounded-lg text-black font-semibold"
         >
           Send
         </button>
