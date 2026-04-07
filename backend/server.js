@@ -21,6 +21,11 @@ app.get("/", (req, res) => {
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  // Send welcome event
+  socket.emit("welcome", {
+    message: "Welcome to Virtual Cosmos 🚀",
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });
