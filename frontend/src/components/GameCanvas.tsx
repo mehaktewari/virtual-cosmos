@@ -1,9 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as PIXI from "pixi.js";
 import { socket } from "../socket";
+import ChatUI from "./ChatUI";
 
-export default function GameCanvas() {
+interface Props {
+  username: string;
+}
+
+export default function GameCanvas({ username }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [messages, setMessages] = useState<any[]>([]);
+  const [chatActive, setChatActive] = useState(false);
 
   useEffect(() => {
     const app = new PIXI.Application({
@@ -48,6 +56,7 @@ export default function GameCanvas() {
      * 🧍 PLAYERS
      */
     const playerGraphics: Record<string, PIXI.Graphics> = {};
+    const playerLabels: Record<string, PIXI.Text> = {};
     let allPlayers: Record<string, any> = {};
 
     /**
@@ -56,12 +65,11 @@ export default function GameCanvas() {
     const player = { x: 400, y: 300 };
     const speed = 3;
 
-    /**
-     * 🎯 PROXIMITY SETTINGS
-     */
     const PROXIMITY_RADIUS = 120;
 
-    // Circle visualization
+    /**
+     * 🔵 PROXIMITY CIRCLE
+     */
     const proximityCircle = new PIXI.Graphics();
     app.stage.addChild(proximityCircle);
 
@@ -84,36 +92,58 @@ export default function GameCanvas() {
     /**
      * 📡 RECEIVE PLAYERS
      */
+    socket.emit("join", { username });
+
     socket.on("players", (players: any) => {
       allPlayers = players;
 
       Object.keys(players).forEach((id) => {
         if (!playerGraphics[id]) {
           const g = new PIXI.Graphics();
-
           g.beginFill(0x38bdf8);
           g.drawCircle(0, 0, 15);
           g.endFill();
 
+          const label = new PIXI.Text(players[id].username || "User", {
+            fontSize: 12,
+            fill: 0xffffff,
+          });
+          label.anchor.set(0.5);
+
           app.stage.addChild(g);
+          app.stage.addChild(label);
+
           playerGraphics[id] = g;
+          playerLabels[id] = label;
         }
 
         playerGraphics[id].x = players[id].x;
         playerGraphics[id].y = players[id].y;
+
+        playerLabels[id].x = players[id].x;
+        playerLabels[id].y = players[id].y - 25;
       });
 
       // Remove disconnected
       Object.keys(playerGraphics).forEach((id) => {
         if (!players[id]) {
           app.stage.removeChild(playerGraphics[id]);
+          app.stage.removeChild(playerLabels[id]);
           delete playerGraphics[id];
+          delete playerLabels[id];
         }
       });
     });
 
     /**
-     * 📏 DISTANCE FUNCTION
+     * 💬 CHAT
+     */
+    socket.on("chat", (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
+    /**
+     * 📏 DISTANCE
      */
     const getDistance = (x1: number, y1: number, x2: number, y2: number) => {
       return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -142,14 +172,10 @@ export default function GameCanvas() {
         moved = true;
       }
 
-      // Send movement
-      if (moved) {
-        socket.emit("move", player);
-      }
+      if (moved) socket.emit("move", player);
 
-      /**
-       * 🎯 PROXIMITY CHECK
-       */
+      let nearby = false;
+
       Object.keys(allPlayers).forEach((id) => {
         const other = allPlayers[id];
         const graphic = playerGraphics[id];
@@ -157,49 +183,43 @@ export default function GameCanvas() {
         if (!graphic) return;
 
         if (id === socket.id) {
-          // self = green
-          graphic.tint = 0x22c55e;
+          graphic.tint = 0x22c55e; // GREEN
           return;
         }
 
-        const distance = getDistance(
-          player.x,
-          player.y,
-          other.x,
-          other.y
-        );
+        const dist = getDistance(player.x, player.y, other.x, other.y);
 
-        if (distance < PROXIMITY_RADIUS) {
-          // nearby = yellow
-          graphic.tint = 0xfacc15;
+        if (dist < PROXIMITY_RADIUS) {
+          graphic.tint = 0xfacc15; // YELLOW
+          nearby = true;
         } else {
-          // far = blue
-          graphic.tint = 0x38bdf8;
+          graphic.tint = 0x38bdf8; // BLUE
         }
       });
 
-      /**
-       * 🔵 DRAW PROXIMITY CIRCLE
-       */
+      setChatActive(nearby);
+
+      // Draw circle
       proximityCircle.clear();
       proximityCircle.lineStyle(2, 0x22c55e, 0.6);
       proximityCircle.drawCircle(player.x, player.y, PROXIMITY_RADIUS);
     });
 
-    /**
-     * 🧹 CLEANUP
-     */
-    const handleResize = () => drawGrid();
-    window.addEventListener("resize", handleResize);
-
     return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
       socket.off("players");
+      socket.off("chat");
       app.destroy(true, true);
     };
-  }, []);
+  }, [username]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  const sendMessage = (msg: string) => {
+    socket.emit("chat", msg);
+  };
+
+  return (
+    <>
+      <div ref={containerRef} className="w-full h-full" />
+      <ChatUI visible={chatActive} messages={messages} onSend={sendMessage} />
+    </>
+  );
 }
