@@ -10,7 +10,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: ["https://virtual-cosmos-eight.vercel.app/", "http://localhost:5173"],
   },
 });
 
