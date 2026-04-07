@@ -45,9 +45,25 @@ export default function GameCanvas() {
     app.stage.addChild(grid);
 
     /**
-     * 🧍 PLAYERS MAP
+     * 🧍 PLAYERS
      */
     const playerGraphics: Record<string, PIXI.Graphics> = {};
+    let allPlayers: Record<string, any> = {};
+
+    /**
+     * 🧠 LOCAL PLAYER
+     */
+    const player = { x: 400, y: 300 };
+    const speed = 3;
+
+    /**
+     * 🎯 PROXIMITY SETTINGS
+     */
+    const PROXIMITY_RADIUS = 120;
+
+    // Circle visualization
+    const proximityCircle = new PIXI.Graphics();
+    app.stage.addChild(proximityCircle);
 
     /**
      * 🎮 INPUT
@@ -66,22 +82,16 @@ export default function GameCanvas() {
     window.addEventListener("keyup", handleKeyUp);
 
     /**
-     * 🧠 LOCAL PLAYER POSITION
-     */
-    const player = { x: 400, y: 300 };
-    const speed = 3;
-
-    /**
-     * 📡 RECEIVE PLAYERS FROM SERVER
+     * 📡 RECEIVE PLAYERS
      */
     socket.on("players", (players: any) => {
+      allPlayers = players;
+
       Object.keys(players).forEach((id) => {
         if (!playerGraphics[id]) {
           const g = new PIXI.Graphics();
 
-          // Different color for self
-          const isMe = id === socket.id;
-          g.beginFill(isMe ? 0x22c55e : 0x38bdf8);
+          g.beginFill(0x38bdf8);
           g.drawCircle(0, 0, 15);
           g.endFill();
 
@@ -93,7 +103,7 @@ export default function GameCanvas() {
         playerGraphics[id].y = players[id].y;
       });
 
-      // Remove disconnected players
+      // Remove disconnected
       Object.keys(playerGraphics).forEach((id) => {
         if (!players[id]) {
           app.stage.removeChild(playerGraphics[id]);
@@ -101,6 +111,13 @@ export default function GameCanvas() {
         }
       });
     });
+
+    /**
+     * 📏 DISTANCE FUNCTION
+     */
+    const getDistance = (x1: number, y1: number, x2: number, y2: number) => {
+      return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    };
 
     /**
      * ⚡ GAME LOOP
@@ -125,10 +142,48 @@ export default function GameCanvas() {
         moved = true;
       }
 
-      // Send updates only if moved
+      // Send movement
       if (moved) {
         socket.emit("move", player);
       }
+
+      /**
+       * 🎯 PROXIMITY CHECK
+       */
+      Object.keys(allPlayers).forEach((id) => {
+        const other = allPlayers[id];
+        const graphic = playerGraphics[id];
+
+        if (!graphic) return;
+
+        if (id === socket.id) {
+          // self = green
+          graphic.tint = 0x22c55e;
+          return;
+        }
+
+        const distance = getDistance(
+          player.x,
+          player.y,
+          other.x,
+          other.y
+        );
+
+        if (distance < PROXIMITY_RADIUS) {
+          // nearby = yellow
+          graphic.tint = 0xfacc15;
+        } else {
+          // far = blue
+          graphic.tint = 0x38bdf8;
+        }
+      });
+
+      /**
+       * 🔵 DRAW PROXIMITY CIRCLE
+       */
+      proximityCircle.clear();
+      proximityCircle.lineStyle(2, 0x22c55e, 0.6);
+      proximityCircle.drawCircle(player.x, player.y, PROXIMITY_RADIUS);
     });
 
     /**
