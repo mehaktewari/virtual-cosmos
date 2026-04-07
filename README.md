@@ -209,12 +209,17 @@ Otherwise:
 
 ## 📸 Screenshots
 
-*(Add screenshots here later)*
+### 🌌 Landing Page
+![Landing Page](screenshots/landing.png)
 
-* Landing page
-* Name entry
-* Multiplayer view
-* Chat UI
+### 🧑 Name Entry
+![Name Entry](screenshots/name.png)
+
+### 🎮 Multiplayer View
+![Game](screenshots/game.png)
+
+### 💬 Chat UI
+![Chat](screenshots/chat.png)
 
 ---
 
