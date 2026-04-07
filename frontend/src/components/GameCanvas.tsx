@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as PIXI from "pixi.js";
+import { socket } from "../socket";
 
 export default function GameCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -17,7 +18,7 @@ export default function GameCanvas() {
     }
 
     /**
-     * 🟦 GRID BACKGROUND
+     * 🟦 GRID
      */
     const grid = new PIXI.Graphics();
     const gridSize = 50;
@@ -44,20 +45,12 @@ export default function GameCanvas() {
     app.stage.addChild(grid);
 
     /**
-     * 🧍 PLAYER
+     * 🧍 PLAYERS MAP
      */
-    const player = new PIXI.Graphics();
-    player.beginFill(0x38bdf8); // cyan
-    player.drawCircle(0, 0, 15);
-    player.endFill();
-
-    player.x = app.renderer.width / 2;
-    player.y = app.renderer.height / 2;
-
-    app.stage.addChild(player);
+    const playerGraphics: Record<string, PIXI.Graphics> = {};
 
     /**
-     * 🎮 INPUT HANDLING
+     * 🎮 INPUT
      */
     const keys: Record<string, boolean> = {};
 
@@ -73,22 +66,68 @@ export default function GameCanvas() {
     window.addEventListener("keyup", handleKeyUp);
 
     /**
-     * ⚡ GAME LOOP
+     * 🧠 LOCAL PLAYER POSITION
      */
+    const player = { x: 400, y: 300 };
     const speed = 3;
 
+    /**
+     * 📡 RECEIVE PLAYERS FROM SERVER
+     */
+    socket.on("players", (players: any) => {
+      Object.keys(players).forEach((id) => {
+        if (!playerGraphics[id]) {
+          const g = new PIXI.Graphics();
+
+          // Different color for self
+          const isMe = id === socket.id;
+          g.beginFill(isMe ? 0x22c55e : 0x38bdf8);
+          g.drawCircle(0, 0, 15);
+          g.endFill();
+
+          app.stage.addChild(g);
+          playerGraphics[id] = g;
+        }
+
+        playerGraphics[id].x = players[id].x;
+        playerGraphics[id].y = players[id].y;
+      });
+
+      // Remove disconnected players
+      Object.keys(playerGraphics).forEach((id) => {
+        if (!players[id]) {
+          app.stage.removeChild(playerGraphics[id]);
+          delete playerGraphics[id];
+        }
+      });
+    });
+
+    /**
+     * ⚡ GAME LOOP
+     */
     app.ticker.add(() => {
+      let moved = false;
+
       if (keys["w"] || keys["arrowup"]) {
         player.y -= speed;
+        moved = true;
       }
       if (keys["s"] || keys["arrowdown"]) {
         player.y += speed;
+        moved = true;
       }
       if (keys["a"] || keys["arrowleft"]) {
         player.x -= speed;
+        moved = true;
       }
       if (keys["d"] || keys["arrowright"]) {
         player.x += speed;
+        moved = true;
+      }
+
+      // Send updates only if moved
+      if (moved) {
+        socket.emit("move", player);
       }
     });
 
@@ -102,6 +141,7 @@ export default function GameCanvas() {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      socket.off("players");
       app.destroy(true, true);
     };
   }, []);
